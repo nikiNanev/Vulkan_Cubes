@@ -1,30 +1,40 @@
 #include "Engine.h"
-#include "CubesData.h"
+
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define TINYGLTF_NOEXCEPTION
+#define JSON_NOEXCEPTION
+#include "tiny_gltf.h"
+
+// #include "LoaderGLTF.h"
+
 #include "callbacks.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+struct Cube cube;
+struct Planes planes;
 
+std::vector<uint16_t> cube_indices = cube.getCubeIndices();
+std::vector<CubeVertex> cube_vertices = cube.getCubeVertices();
 
-static std::vector<char> readFile(const std::string &filename)
-{
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+std::vector<uint32_t> planes_indices = planes.getPlaneIndices();
+std::vector<Vertex> planes_vertices = planes.getPlanesVertices();
 
-    if (!file.is_open())
+static float scale = 50.0f;
+
+std::vector<InstanceData> cube_instances =
     {
-        throw std::runtime_error("Failed to open file!");
-    }
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 1.0f)), 0},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 2.0f)), 1},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 3.0f)), 2},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 4.0f)), 3},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 5.0f)), 4},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 6.0f)), 5},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 7.0f)), 6},
 
-    size_t fileSize = (size_t)file.tellg();
-    std::vector<char> buffer(fileSize);
+};
 
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-
-    file.close();
-
-    return buffer;
-}
+#define STONE_TEXTURES_COUNT 7
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
                                       const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
@@ -123,6 +133,20 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
         std::cout << "A key is pressed" << std::endl;
 }
 
+void Engine::initGLTF(Engine &engine)
+{
+    // tinygltf::Model punk;
+
+    // Loader::PipelineGLTF pipelineGLTF;
+
+    // bool model_loaded = pipelineGLTF.model.loadModel(punk, "../models/steampunk/scene.gltf", engine);
+
+    // if (model_loaded)
+    // {
+    //     std::cout << "Successfully loaded model!" << std::endl;
+    // }
+}
+
 bool Engine::isExtensionsSupported(const char **glfwExtensions)
 {
     uint16_t counter = 0;
@@ -203,6 +227,8 @@ void Engine::run()
 {
     initWindow();
     initVulkan();
+
+    // initGLTF(*this);
     mainLoop();
     cleanup();
 }
@@ -230,6 +256,7 @@ void Engine::framebufferResizeCallback(GLFWwindow *window, int width, int height
     auto app = reinterpret_cast<Engine *>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
 }
+
 void Engine::initVulkan()
 {
     createInstance();
@@ -237,19 +264,23 @@ void Engine::initVulkan()
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+
     createSwapChain();
     createImageViews();
     createRenderPass();
+
     createDescriptorSetLayout();
+    createPipelineCache();
     createGraphicsPipeline();
     createCommandPool();
     createCommandBuffersTransfer();
     createDepthResources();
     createFramebuffers();
-    createTextureImage();
-    createTextureImageView();
+
+    createStoneTextureImages();
+
     createTextureSampler();
-    createVertexBuffer();
+    createVertexBuffer(cube_vertices);
     createIndexBuffer();
     createInstanceBuffer();
     createUniformBuffers();
@@ -259,14 +290,46 @@ void Engine::initVulkan()
     createSyncObjects();
 }
 
-void Engine::createTextureImage()
+void Engine::createStoneTextureImages()
+{
+
+    std::vector<std::string> filepaths = {
+        "../textures/wood.jpg",
+        "../textures/stone2.png",
+        "../textures/stone3.png",
+        "../textures/stone4.jpg",
+        "../textures/stone5.jpg",
+        "../textures/stone6.png",
+        "../textures/labyrinth_example.jpg",
+    };
+
+    stoneImages.resize(STONE_TEXTURES_COUNT);
+    stoneImageViews.resize(STONE_TEXTURES_COUNT);
+    stoneImagesMemory.resize(STONE_TEXTURES_COUNT);
+
+    for (size_t i = 0; i < STONE_TEXTURES_COUNT; i++)
+    {
+        createTextureImage(filepaths[i], stoneImages[i], stoneImagesMemory[i]);
+        createTextureImageView(stoneImages[i], stoneImageViews[i]);
+    }
+
+    for (size_t i = 0; i < stoneImageViews.size(); i++)
+    {
+        if (stoneImageViews[i] != nullptr)
+        {
+            std::cout << "Image view available: [" << i << "]: " << stoneImageViews[i] << std::endl;
+        }
+    }
+}
+
+void Engine::createTextureImage(std::string filepath, VkImage &image, VkDeviceMemory &imageMemory)
 {
     int texWidth, texHeight, texChannels;
-    stbi_uc *pixels = stbi_load("../textures/wood.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    stbi_uc *pixels = stbi_load(filepath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     VkDeviceSize imageSize = texWidth * texHeight * 4;
 
     if (!pixels)
-        throw std::runtime_error("Failed to load texture image!");
+        throw std::runtime_error("Failed to load texture image!(" + filepath + ")");
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -282,11 +345,11 @@ void Engine::createTextureImage()
 
     createImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, imageMemory);
 
-    transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-    transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    transitionImageLayout(image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(stagingBuffer, image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+    transitionImageLayout(image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
     vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
@@ -302,9 +365,9 @@ void Engine::createDepthResources()
     transitionImageLayout(depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
-void Engine::createTextureImageView()
+void Engine::createTextureImageView(VkImage &image, VkImageView &imageView)
 {
-    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+    imageView = createImageView(image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 void Engine::createTextureSampler()
@@ -504,45 +567,34 @@ void Engine::createInstanceBuffer()
 {
     VkDeviceSize bufferSize = sizeof(cube_instances[0]) * cube_instances.size();
 
-    instancesBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    instancesBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-    instancesBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+    createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, instancesBuffer, instancesBufferMemory);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, instancesBuffers[i], instancesBuffersMemory[i]);
+    vkMapMemory(logicalDevice, instancesBufferMemory, 0, bufferSize, 0, &instancesBufferMapped);
 
-        vkMapMemory(logicalDevice, instancesBuffersMemory[i], 0, bufferSize, 0, &instancesBuffersMapped[i]);
-    }
+    // instancesBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    // instancesBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    // instancesBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    // for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    // {
+    //     createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, instancesBuffers[i], instancesBuffersMemory[i]);
+
+    //     vkMapMemory(logicalDevice, instancesBuffersMemory[i], 0, bufferSize, 0, &instancesBuffersMapped[i]);
+    // }
 }
 
-void Engine::updateInstanceBuffer(uint32_t currentImage)
+void Engine::updateInstanceBuffer()
 {
     static auto startTime = std::chrono::high_resolution_clock::now();
-    static float accum = 0.0f, factor = 0.0f;
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-    cube_instances[3].modelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, glm::cos(time * 0.2f * M_PI)));
-    cube_instances[4].modelMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(glm::cos(time * M_PI * 4.0f), -2.0f, 0.0f));
-
-    accum += time;
-
-    if(accum >= 2)
-    {
-        accum = 0.0f;
-        factor += 0.002f;
-    }
-
-    cube_instances[5].modelMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(sin(time / 4.0f) + factor));
-    std::cout << "Factor: " << factor << std::endl;
-
-    memcpy(instancesBuffersMapped[currentImage], cube_instances.data(), sizeof(cube_instances[0]) * cube_instances.size());
+    memcpy(instancesBufferMapped, cube_instances.data(), sizeof(cube_instances[0]) * cube_instances.size());
 }
 
-void Engine::createVertexBuffer()
+void Engine::createVertexBuffer(std::vector<CubeVertex> &cubes)
 {
-    VkDeviceSize bufferSize = sizeof(cube_vertices[0]) * cube_vertices.size();
+    VkDeviceSize bufferSize = sizeof(cubes[0]) * cubes.size();
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -551,7 +603,7 @@ void Engine::createVertexBuffer()
 
     void *data;
     vkMapMemory(logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, cube_vertices.data(), (size_t)bufferSize);
+    memcpy(data, cubes.data(), (size_t)bufferSize);
     vkUnmapMemory(logicalDevice, stagingBufferMemory);
 
     createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
@@ -588,19 +640,23 @@ void Engine::createUniformBuffers()
 {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
-    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+    // uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    // uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    // uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
+    // for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    // {
+    //     createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
 
-        vkMapMemory(logicalDevice, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
-    }
+    //     vkMapMemory(logicalDevice, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+    // }
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffer, uniformBufferMemory);
+
+    vkMapMemory(logicalDevice, uniformBufferMemory, 0, bufferSize, 0, &uniformBufferMapped);
 }
 
-void Engine::updateUniformBuffer(uint32_t currentImage, Camera &camera)
+void Engine::updateUniformBuffer(Camera &camera)
 {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -608,12 +664,12 @@ void Engine::updateUniformBuffer(uint32_t currentImage, Camera &camera)
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
     ubo.view = camera.GetViewMatrix();
-    ubo.proj = glm::perspective(glm::radians(mouse.fov), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 1000.0f);
+    ubo.proj = glm::perspective(glm::radians(mouse.fov), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 2000.0f);
     ubo.proj[1][1] *= -1;
 
-    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
 }
 
 VkFormat Engine::findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
@@ -653,7 +709,7 @@ void Engine::createDescriptorPool()
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * STONE_TEXTURES_COUNT;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -682,17 +738,38 @@ void Engine::createDescriptorSets()
         throw std::runtime_error("Failed to allocate descriptor sets!");
     }
 
+    std::vector<VkDescriptorImageInfo> imageInfos{};
+    imageInfos.resize(STONE_TEXTURES_COUNT);
+
+    std::cout << "Size of stone image views: " << stoneImageViews.size() << std::endl;
+
+    if (stoneImageViews[0] == nullptr)
+    {
+        std::cout << "No data in stone image view" << std::endl;
+    }
+
+    for (size_t i = 0; i < stoneImageViews.size(); i++)
+    {
+        if (stoneImageViews[i] != nullptr)
+        {
+            std::cout << "Image view available: [" << i << "]: " << stoneImageViews[i] << std::endl;
+        }
+        else
+        {
+            std::cout << "Image view not available" << std::endl;
+        }
+
+        imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfos[i].imageView = stoneImageViews[i];
+        imageInfos[i].sampler = textureSampler;
+    }
+
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.buffer = uniformBuffer;
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(UniformBufferObject);
-
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = textureImageView;
-        imageInfo.sampler = textureSampler;
 
         std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -710,8 +787,8 @@ void Engine::createDescriptorSets()
         descriptorWrites[1].dstBinding = 1;
         descriptorWrites[1].dstArrayElement = 0;
         descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pImageInfo = &imageInfo;
+        descriptorWrites[1].descriptorCount = static_cast<uint32_t>(imageInfos.size());
+        descriptorWrites[1].pImageInfo = imageInfos.data();
         descriptorWrites[1].pTexelBufferView = nullptr;
 
         vkUpdateDescriptorSets(logicalDevice, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
@@ -940,7 +1017,7 @@ void Engine::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIn
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    VkBuffer vertexBuffers[] = {vertexBuffer, instancesBuffers[1]};
+    VkBuffer vertexBuffers[] = {vertexBuffer, instancesBuffer};
     VkDeviceSize offsets[] = {0, 0};
 
     vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
@@ -1024,7 +1101,7 @@ void Engine::createDescriptorSetLayout()
 
     VkDescriptorSetLayoutBinding samplerLayoutBinding{};
     samplerLayoutBinding.binding = 1;
-    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.descriptorCount = STONE_TEXTURES_COUNT;
     samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     samplerLayoutBinding.pImmutableSamplers = nullptr;
     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -1044,8 +1121,8 @@ void Engine::createDescriptorSetLayout()
 
 void Engine::createGraphicsPipeline()
 {
-    auto vertShaderCode = readFile("../shaders/triangle2.vert.spv");
-    auto fragShaderCode = readFile("../shaders/triangle.frag.spv");
+    auto vertShaderCode = readFile("../shaders/cubes.vert.spv");
+    auto fragShaderCode = readFile("../shaders/cubes.frag.spv");
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -1066,8 +1143,8 @@ void Engine::createGraphicsPipeline()
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    auto bindingDescription = Vertex::getbindingDescription();
-    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+    auto bindingDescription = CubeVertex::getbindingDescription();
+    auto attributeDescriptions = CubeVertex::getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo viCreateInfo{};
     viCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -1272,6 +1349,15 @@ void Engine::createRenderPass()
     if (vkCreateRenderPass(logicalDevice, &rpCreateInfo, nullptr, &renderPass) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to create render pass!");
+    }
+}
+
+void Engine::createPipelineCache()
+{
+    VkPipelineCacheCreateInfo pipelineCacheCreateInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+    if (vkCreatePipelineCache(logicalDevice, &pipelineCacheCreateInfo, nullptr, &pipelineCache) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Could not create pipeline cache");
     }
 }
 
@@ -1484,15 +1570,6 @@ void Engine::pickPhysicalDevice()
 
 bool Engine::isDeviceSuitable(VkPhysicalDevice device)
 {
-
-    // VkPhysicalDeviceProperties deviceProperties;
-    // VkPhysicalDeviceFeatures deviceFeatures;
-
-    // vkGetPhysicalDeviceProperties(device, &deviceProperties);
-    // vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-    // return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && deviceFeatures.geometryShader;
-
     bool extensionsSupported = checkDeviceExtensionSupport(device);
 
     bool swapChainAdequate = false;
@@ -1504,7 +1581,6 @@ bool Engine::isDeviceSuitable(VkPhysicalDevice device)
 
     QueueFamilyIndices indices = findQueueFamilies(device);
 
-    VkPhysicalDeviceFeatures supportedFeatures;
     vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
     return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
 }
@@ -1757,8 +1833,8 @@ void Engine::drawFrame(Camera &camera)
 
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
-    updateInstanceBuffer(currentFrame);
-    updateUniformBuffer(currentFrame, camera);
+    updateInstanceBuffer();
+    updateUniformBuffer(camera);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1834,16 +1910,19 @@ void Engine::cleanup()
     cleanupSwapChain();
 
     vkDestroySampler(logicalDevice, textureSampler, nullptr);
-    vkDestroyImageView(logicalDevice, textureImageView, nullptr);
 
-    vkDestroyImage(logicalDevice, textureImage, nullptr);
-    vkFreeMemory(logicalDevice, textureImageMemory, nullptr);
+    // vkDestroyImageView(gltfTextures.imageViews); // To Do
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    for (size_t i = 0; i < STONE_TEXTURES_COUNT; i++)
     {
-        vkDestroyBuffer(logicalDevice, uniformBuffers[i], nullptr);
-        vkFreeMemory(logicalDevice, uniformBuffersMemory[i], nullptr);
+        vkDestroyImageView(logicalDevice, stoneImageViews[i], nullptr);
+
+        vkDestroyImage(logicalDevice, stoneImages[i], nullptr);
+        vkFreeMemory(logicalDevice, stoneImagesMemory[i], nullptr);
     }
+
+    vkDestroyBuffer(logicalDevice, uniformBuffer, nullptr);
+    vkFreeMemory(logicalDevice, uniformBufferMemory, nullptr);
 
     vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 
@@ -1855,13 +1934,12 @@ void Engine::cleanup()
     vkDestroyBuffer(logicalDevice, vertexBuffer, nullptr);
     vkFreeMemory(logicalDevice, vertexBufferMemory, nullptr);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        vkDestroyBuffer(logicalDevice, instancesBuffers[i], nullptr);
-        vkFreeMemory(logicalDevice, instancesBuffersMemory[i], nullptr);
-    }
+    vkDestroyBuffer(logicalDevice, instancesBuffer, nullptr);
+    vkFreeMemory(logicalDevice, instancesBufferMemory, nullptr);
 
     vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
+
+    vkDestroyPipelineCache(logicalDevice, pipelineCache, nullptr);
 
     vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
 

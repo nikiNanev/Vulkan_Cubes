@@ -1,3 +1,6 @@
+#ifndef ENGINE_H
+#define ENGINE_H
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -30,6 +33,9 @@
 
 #include "camera.h"
 
+#include "Planes.h"
+#include "Cubes.h"
+
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
 
@@ -39,9 +45,10 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
 struct UniformBufferObject
 {
-    alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
@@ -73,12 +80,30 @@ struct QueueFamilyIndices
     }
 };
 
+static std::vector<char> readFile(const std::string &filename)
+{
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Failed to open file!");
+    }
+
+    size_t fileSize = (size_t)file.tellg();
+    std::vector<char> buffer(fileSize);
+
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+
+    file.close();
+
+    return buffer;
+}
+
 class Engine
 {
 public:
     void run();
-
-private:
     GLFWwindow *window;
 
     VkInstance instance;
@@ -105,6 +130,8 @@ private:
     VkDebugUtilsMessengerEXT debugMessenger;
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+
+    VkPhysicalDeviceFeatures supportedFeatures;
 
     uint32_t physicalDeviceCount = 0;
 
@@ -136,6 +163,7 @@ private:
     VkPipelineLayout pipelineLayout;
 
     VkPipeline graphicsPipeline;
+    VkPipelineCache pipelineCache;
 
     std::vector<VkFramebuffer> swapChainFramebuffers;
 
@@ -151,8 +179,6 @@ private:
 
     bool framebufferResized = false;
 
-    const int MAX_FRAMES_IN_FLIGHT = 2;
-
     uint32_t currentFrame = 0;
 
     VkBuffer vertexBuffer;
@@ -161,22 +187,30 @@ private:
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
 
-    std::vector<VkBuffer> instancesBuffers;
-    std::vector<VkDeviceMemory> instancesBuffersMemory;
-    std::vector<void *> instancesBuffersMapped;
+    VkBuffer instancesBuffer;
+    VkDeviceMemory instancesBufferMemory;
+    void *instancesBufferMapped;
 
-    std::vector<VkBuffer> uniformBuffers;
-    std::vector<VkDeviceMemory> uniformBuffersMemory;
-    std::vector<void *> uniformBuffersMapped;
+    // std::vector<VkBuffer> instancesBuffers;
+    // std::vector<VkDeviceMemory> instancesBuffersMemory;
+    // std::vector<void *> instancesBuffersMapped;
+
+    VkBuffer uniformBuffer;
+    VkDeviceMemory uniformBufferMemory;
+    void *uniformBufferMapped;
+
+    // std::vector<VkBuffer> uniformBuffers;
+    // std::vector<VkDeviceMemory> uniformBuffersMemory;
+    // std::vector<void *> uniformBuffersMapped;
 
     VkImage depthImage;
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
-    VkImage textureImage;
-    VkDeviceMemory textureImageMemory;
+    std::vector<VkImage> stoneImages;
+    std::vector<VkDeviceMemory> stoneImagesMemory;
+    std::vector<VkImageView> stoneImageViews;
 
-    VkImageView textureImageView;
     VkSampler textureSampler;
 
     VkDescriptorPool descriptorPool;
@@ -187,6 +221,8 @@ private:
     void initWindow();
 
     void initVulkan();
+
+    void initGLTF(Engine &engine);
 
     void createInstance();
 
@@ -235,6 +271,8 @@ private:
 
     void createGraphicsPipeline();
 
+    void createPipelineCache();
+
     void createFramebuffers();
 
     void createCommandPool();
@@ -254,9 +292,11 @@ private:
 
     void createDepthResources();
 
-    void createTextureImage();
+    void createStoneTextureImages();
 
-    void createTextureImageView();
+    void createTextureImage(std::string filepath, VkImage &image, VkDeviceMemory &imageMemory);
+
+    void createTextureImageView(VkImage &image, VkImageView &imageView);
 
     void createTextureSampler();
 
@@ -264,17 +304,17 @@ private:
 
     void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 
-    void createVertexBuffer();
+    void createVertexBuffer(std::vector<CubeVertex> &cubes);
 
     void createIndexBuffer();
 
     void createUniformBuffers();
 
-    void updateUniformBuffer(uint32_t currentImage, Camera &camera);
+    void updateUniformBuffer(Camera &camera);
 
     void createInstanceBuffer();
 
-    void updateInstanceBuffer(uint32_t currentImage);
+    void updateInstanceBuffer();
 
     void createDescriptorPool();
 
@@ -304,3 +344,5 @@ private:
 
     void cleanupSwapChain();
 };
+
+#endif

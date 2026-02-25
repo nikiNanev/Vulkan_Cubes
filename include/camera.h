@@ -76,22 +76,6 @@ public:
 		return glm::lookAt(Position, Position + Front, Up);
 	}
 
-	// processes input received from any keyboard-like input system. Accepts
-	// input parameter in the form of camera defined ENUM (to abstract it
-	// from windowing systems)
-	void ProcessKeyboard(Camera_Movement direction, float deltaTime)
-	{
-		float velocity = MovementSpeed * deltaTime;
-		if (direction == FORWARD)
-			Position += Front * velocity;
-		if (direction == BACKWARD)
-			Position -= Front * velocity;
-		if (direction == LEFT)
-			Position -= Right * velocity;
-		if (direction == RIGHT)
-			Position += Right * velocity;
-	}
-
 	void keyboard_input(GLFWwindow *window, float deltaTime)
 	{
 		static float acc_factor = 1.2;
@@ -105,12 +89,30 @@ public:
 		{
 			accumulator = 0.5;
 			acc_factor += 0.2;
-			std::cout << "acc_factor: " << acc_factor << std::endl;
 		}
 
 		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 			glfwSetWindowShouldClose(window, true);
 
+		static bool isPressed = false;
+
+		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+		{
+			if (!isPressed)
+			{
+				acc_factor += 30.0f;
+				isPressed = true;
+			}
+		}
+
+		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_RELEASE)
+		{
+			if (isPressed)
+			{
+				acc_factor -= 30.0f;
+				isPressed = false;
+			}
+		}
 		// Camera controls
 		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
 			this->Position +=
@@ -126,6 +128,11 @@ public:
 			this->Position += glm::normalize(glm::cross(
 								  this->Front, this->Up)) *
 							  this->MovementSpeed;
+
+		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+		{
+			this->Position += this->MovementSpeed * this->Up;
+		}
 	}
 
 	// processes input received from a mouse input system. Expects the
