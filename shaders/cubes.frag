@@ -23,6 +23,9 @@ void main()
         case 2:
             factor = 2.0f;
             break;
+        case 6:
+        case 7:
+            factor = 16.0f;
     }
 
     vec2 flipped = vec2(fragTexCoord.x, 1.0 - fragTexCoord.y);

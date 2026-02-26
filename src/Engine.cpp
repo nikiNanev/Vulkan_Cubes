@@ -20,21 +20,41 @@ std::vector<CubeVertex> cube_vertices = cube.getCubeVertices();
 std::vector<uint32_t> planes_indices = planes.getPlaneIndices();
 std::vector<Vertex> planes_vertices = planes.getPlanesVertices();
 
-static float scale = 50.0f;
+static float scale = 10.0f;
+
+glm::mat4 model_instance_west_block = glm::translate(glm::mat4(1.0f), glm::vec3(400.0f, 90.0f, 0.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(100.0f));
+glm::mat4 model_instance_east_block = glm::translate(glm::mat4(1.0f), glm::vec3(-400.0f, 90.0f, 0.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(100.0f));
+
+glm::mat4 model_instance_north_block = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 90.0f, 600.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(100.0f));
+glm::mat4 model_instance_south_block = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 90.0f, -600.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(100.0f));
 
 std::vector<InstanceData> cube_instances =
     {
-        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 1.0f)), 0},
-        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 2.0f)), 1},
-        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 3.0f)), 2},
-        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 4.0f)), 3},
-        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 5.0f)), 4},
-        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 6.0f)), 5},
-        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 7.0f)), 6},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 2.0f)), 0},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 4.0f)), 1},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 6.0f)), 2},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 8.0f)), 3},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 10.0f)), 4},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 12.0f)), 5},
+        {glm::scale(glm::mat4(1.0f), glm::vec3(scale * 14.0f)), 0},
+
+        {model_instance_west_block, 1},
+        {model_instance_east_block, 2},
+
+        {model_instance_south_block, 3},
+        {model_instance_north_block, 4},
 
 };
 
-#define STONE_TEXTURES_COUNT 7
+std::vector<InstanceData> plane_instances =
+    {
+        {glm::scale(glm::mat4(1.0f), glm::vec3(10.0f)), 6},
+    };
+
+uint32_t planeInstanceCount = static_cast<uint32_t>(plane_instances.size());
+uint32_t planeIndexCount = static_cast<uint32_t>(planes_indices.size());
+
+#define STONE_TEXTURES_COUNT 8
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
                                       const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
@@ -280,8 +300,16 @@ void Engine::initVulkan()
     createStoneTextureImages();
 
     createTextureSampler();
+
     createVertexBuffer(cube_vertices);
     createIndexBuffer();
+
+    // Planes resources
+    createPlanesVertexBuffer();
+    createPlanesIndexBuffer();
+    createPlanesInstanceBuffer();
+
+
     createInstanceBuffer();
     createUniformBuffers();
     createDescriptorPool();
@@ -300,6 +328,7 @@ void Engine::createStoneTextureImages()
         "../textures/stone4.jpg",
         "../textures/stone5.jpg",
         "../textures/stone6.png",
+        "../textures/stone7.jpg",
         "../textures/labyrinth_example.jpg",
     };
 
@@ -570,17 +599,15 @@ void Engine::createInstanceBuffer()
     createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, instancesBuffer, instancesBufferMemory);
 
     vkMapMemory(logicalDevice, instancesBufferMemory, 0, bufferSize, 0, &instancesBufferMapped);
+}
 
-    // instancesBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    // instancesBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-    // instancesBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+void Engine::createPlanesInstanceBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(plane_instances[0]) * plane_instances.size();
 
-    // for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    // {
-    //     createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, instancesBuffers[i], instancesBuffersMemory[i]);
+    createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, planesInstanceBuffer, planeInstanceBufferMemory);
 
-    //     vkMapMemory(logicalDevice, instancesBuffersMemory[i], 0, bufferSize, 0, &instancesBuffersMapped[i]);
-    // }
+    vkMapMemory(logicalDevice, planeInstanceBufferMemory, 0, bufferSize, 0, &planeUniformMapped);
 }
 
 void Engine::updateInstanceBuffer()
@@ -590,6 +617,11 @@ void Engine::updateInstanceBuffer()
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     memcpy(instancesBufferMapped, cube_instances.data(), sizeof(cube_instances[0]) * cube_instances.size());
+}
+
+void Engine::planeUpdateInstanceBuffer()
+{
+    memcpy(planeUniformMapped, plane_instances.data(), sizeof(plane_instances[0]) * plane_instances.size());
 }
 
 void Engine::createVertexBuffer(std::vector<CubeVertex> &cubes)
@@ -636,20 +668,53 @@ void Engine::createIndexBuffer()
     vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
 }
 
+void Engine::createPlanesVertexBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(planes_vertices[0]) * planes_vertices.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    void *data;
+    vkMapMemory(logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, planes_vertices.data(), (size_t)bufferSize);
+    vkUnmapMemory(logicalDevice, stagingBufferMemory);
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, planesVertexBuffer, planesVertexBufferMemory);
+
+    copyBuffer(stagingBuffer, planesVertexBuffer, bufferSize);
+
+    vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
+    vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
+}
+
+void Engine::createPlanesIndexBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(planes_indices[0]) * planes_indices.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    void *data;
+    vkMapMemory(logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, planes_indices.data(), (size_t)bufferSize);
+    vkUnmapMemory(logicalDevice, stagingBufferMemory);
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, planesIndexBuffer, planesIndexBufferMemory);
+
+    copyBuffer(stagingBuffer, planesIndexBuffer, bufferSize);
+
+    vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
+    vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
+}
+
 void Engine::createUniformBuffers()
 {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-
-    // uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    // uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-    // uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
-
-    // for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    // {
-    //     createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
-
-    //     vkMapMemory(logicalDevice, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
-    // }
 
     createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffer, uniformBufferMemory);
 
@@ -707,15 +772,15 @@ void Engine::createDescriptorPool()
 {
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * STONE_TEXTURES_COUNT;
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * STONE_TEXTURES_COUNT * 2;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
 
     if (vkCreateDescriptorPool(logicalDevice, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
     {
@@ -735,13 +800,17 @@ void Engine::createDescriptorSets()
     descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
     if (vkAllocateDescriptorSets(logicalDevice, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
     {
-        throw std::runtime_error("Failed to allocate descriptor sets!");
+        throw std::runtime_error("Failed to allocate descriptor sets! ( Cubes )");
+    }
+
+    planeDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(logicalDevice, &allocInfo, planeDescriptorSets.data()) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to allocate descriptor sets! ( Planes )");
     }
 
     std::vector<VkDescriptorImageInfo> imageInfos{};
     imageInfos.resize(STONE_TEXTURES_COUNT);
-
-    std::cout << "Size of stone image views: " << stoneImageViews.size() << std::endl;
 
     if (stoneImageViews[0] == nullptr)
     {
@@ -792,6 +861,38 @@ void Engine::createDescriptorSets()
         descriptorWrites[1].pTexelBufferView = nullptr;
 
         vkUpdateDescriptorSets(logicalDevice, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+    
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = uniformBuffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = planeDescriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &bufferInfo;
+        descriptorWrites[0].pImageInfo = nullptr;
+        descriptorWrites[0].pTexelBufferView = nullptr;
+
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = planeDescriptorSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrites[1].descriptorCount = static_cast<uint32_t>(imageInfos.size());
+        descriptorWrites[1].pImageInfo = imageInfos.data();
+        descriptorWrites[1].pTexelBufferView = nullptr;
+
+        vkUpdateDescriptorSets(logicalDevice, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+
     }
 }
 
@@ -1016,6 +1117,18 @@ void Engine::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIn
     scissor.offset = {0, 0};
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+    VkBuffer planeVertexBuffers[] = {planesVertexBuffer, planesInstanceBuffer};
+    VkDeviceSize offsetsPlanes[] = {0, 0};
+
+    vkCmdBindVertexBuffers(commandBuffer, 0, 2, planeVertexBuffers, offsetsPlanes);
+    vkCmdBindIndexBuffer(commandBuffer, planesIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &planeDescriptorSets[currentFrame], 0, nullptr);
+
+    vkCmdDrawIndexed(commandBuffer, planeIndexCount, planeInstanceCount, 0, 0, 0);
 
     VkBuffer vertexBuffers[] = {vertexBuffer, instancesBuffer};
     VkDeviceSize offsets[] = {0, 0};
@@ -1833,6 +1946,7 @@ void Engine::drawFrame(Camera &camera)
 
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
+    planeUpdateInstanceBuffer();
     updateInstanceBuffer();
     updateUniformBuffer(camera);
 
@@ -1911,8 +2025,6 @@ void Engine::cleanup()
 
     vkDestroySampler(logicalDevice, textureSampler, nullptr);
 
-    // vkDestroyImageView(gltfTextures.imageViews); // To Do
-
     for (size_t i = 0; i < STONE_TEXTURES_COUNT; i++)
     {
         vkDestroyImageView(logicalDevice, stoneImageViews[i], nullptr);
@@ -1933,6 +2045,15 @@ void Engine::cleanup()
 
     vkDestroyBuffer(logicalDevice, vertexBuffer, nullptr);
     vkFreeMemory(logicalDevice, vertexBufferMemory, nullptr);
+
+    vkDestroyBuffer(logicalDevice, planesIndexBuffer, nullptr);
+    vkFreeMemory(logicalDevice, planesIndexBufferMemory, nullptr);
+
+    vkDestroyBuffer(logicalDevice, planesVertexBuffer, nullptr);
+    vkFreeMemory(logicalDevice, planesVertexBufferMemory, nullptr);
+    
+    vkDestroyBuffer(logicalDevice, planesInstanceBuffer, nullptr);
+    vkFreeMemory(logicalDevice, planeInstanceBufferMemory, nullptr);
 
     vkDestroyBuffer(logicalDevice, instancesBuffer, nullptr);
     vkFreeMemory(logicalDevice, instancesBufferMemory, nullptr);

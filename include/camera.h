@@ -100,7 +100,7 @@ public:
 		{
 			if (!isPressed)
 			{
-				acc_factor += 30.0f;
+				acc_factor += 60.0f;
 				isPressed = true;
 			}
 		}

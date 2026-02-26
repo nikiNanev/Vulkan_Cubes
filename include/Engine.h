@@ -182,26 +182,27 @@ public:
     uint32_t currentFrame = 0;
 
     VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-
+    VkDeviceMemory vertexBufferMemory; 
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
+
+    // Planes buffers and memory
+    VkBuffer planesVertexBuffer;
+    VkDeviceMemory planesVertexBufferMemory;
+    VkBuffer planesIndexBuffer;
+    VkDeviceMemory planesIndexBufferMemory;
+
+    VkBuffer planesInstanceBuffer;
+    VkDeviceMemory planeInstanceBufferMemory;
+    void *planeUniformMapped;
 
     VkBuffer instancesBuffer;
     VkDeviceMemory instancesBufferMemory;
     void *instancesBufferMapped;
 
-    // std::vector<VkBuffer> instancesBuffers;
-    // std::vector<VkDeviceMemory> instancesBuffersMemory;
-    // std::vector<void *> instancesBuffersMapped;
-
     VkBuffer uniformBuffer;
     VkDeviceMemory uniformBufferMemory;
     void *uniformBufferMapped;
-
-    // std::vector<VkBuffer> uniformBuffers;
-    // std::vector<VkDeviceMemory> uniformBuffersMemory;
-    // std::vector<void *> uniformBuffersMapped;
 
     VkImage depthImage;
     VkDeviceMemory depthImageMemory;
@@ -215,6 +216,9 @@ public:
 
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
+
+    //Planes descriptor sets
+    std::vector<VkDescriptorSet> planeDescriptorSets;
 
     VkMemoryRequirements memRequirements;
 
@@ -307,6 +311,18 @@ public:
     void createVertexBuffer(std::vector<CubeVertex> &cubes);
 
     void createIndexBuffer();
+
+    //Create buffers for planes
+
+    void createPlanesVertexBuffer();
+
+    void createPlanesIndexBuffer();
+
+    void createPlanesInstanceBuffer();
+
+    void planeUpdateInstanceBuffer();
+
+    //Unifor buffer for cubes
 
     void createUniformBuffers();
 
